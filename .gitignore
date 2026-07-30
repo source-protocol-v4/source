@@ -1,0 +1,17 @@
+# Node
+node_modules/
+
+# Foundry — dependencies/ holds git submodules and is tracked, not ignored
+out/
+cache/
+broadcast/
+
+# local environment — never commit an RPC endpoint with an API key in it
+.env
+.env.*
+!.env.example
+
+# private setup notes — not published
+SETUP.ru.md
+releases/SETUP.ru.md
+claude.md

@@ -1,0 +1,25 @@
+{
+  "name": "source-release-mirror",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic, independently verified GitHub mirror of finalized SOURCE releases on Ethereum Mainnet.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync:releases": "tsx scripts/sync-releases.ts",
+    "verify:release": "tsx scripts/verify-release.ts",
+    "verify:all": "tsx scripts/verify-release.ts --all",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx test/*.test.ts"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

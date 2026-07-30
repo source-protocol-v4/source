@@ -1,0 +1,102 @@
+name: sync-source
+
+# Mirror newly finalized SOURCE releases into `releases/`.
+#
+# This workflow is read-only against Ethereum. It holds no private key, sends no transaction and
+# has no authority over the SOURCE contract — it only reads finalized releases, verifies them and
+# commits the generated files back to this repository.
+
+on:
+  schedule:
+    # every 15 minutes, offset off the hour to avoid the scheduler's peak
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+# The only write this workflow performs is committing generated release files to this repo.
+permissions:
+  contents: write
+
+# One run at a time. A scheduled run is not cancelled midway, so a run that is already verifying
+# and committing finishes cleanly instead of leaving a half-written release directory behind.
+concurrency:
+  group: sync-source
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+      SOURCE_ADDRESS: ${{ vars.SOURCE_ADDRESS }}
+      DEPLOYMENT_BLOCK: ${{ vars.DEPLOYMENT_BLOCK }}
+      CHAIN_ID: ${{ vars.CHAIN_ID || '1' }}
+      CONFIRMATIONS: ${{ vars.CONFIRMATIONS || '20' }}
+
+    steps:
+      - name: Check out the mirror
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check required configuration
+        run: |
+          missing=""
+          [ -n "$ETH_RPC_URL" ] || missing="$missing ETH_RPC_URL(secret)"
+          [ -n "$SOURCE_ADDRESS" ] || missing="$missing SOURCE_ADDRESS(variable)"
+          [ -n "$DEPLOYMENT_BLOCK" ] || missing="$missing DEPLOYMENT_BLOCK(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository configuration:$missing — see README.md"
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Sync releases
+        id: sync
+        run: npm run sync:releases
+
+      - name: Commit new releases
+        if: steps.sync.outputs.released == 'true'
+        env:
+          COMMIT_MESSAGE: ${{ steps.sync.outputs.message }}
+        run: |
+          set -euo pipefail
+
+          # Stage only generated release files. Nothing else this job touched can enter a commit.
+          git add --all -- releases/
+
+          # No empty commits: if staging produced no change, stop here rather than committing.
+          if git diff --cached --quiet; then
+            echo "no staged changes — nothing to commit"
+            exit 0
+          fi
+
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "$COMMIT_MESSAGE"
+
+          # Rebase onto whatever landed while this run was verifying, then push.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.sync.outputs.released }}" = "true" ]; then
+            echo "Mirrored ${{ steps.sync.outputs.count }} release(s): ${{ steps.sync.outputs.message }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new finalized releases to mirror." >> "$GITHUB_STEP_SUMMARY"
+          fi
