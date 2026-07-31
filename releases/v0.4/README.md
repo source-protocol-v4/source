@@ -1,0 +1,80 @@
+# SOURCE v0.4
+
+Finalized release 4 of the Living Source program, mirrored from Ethereum chain 1
+and verified independently from the contract's own `SourceChanged` events.
+
+| Field | Value |
+| --- | --- |
+| Release | v0.4 |
+| Revision | 160 |
+| Packed state | `0xa2c24938` |
+| Source Hash | `0xb48d5bdb1b713cf077bebe9bb16668db45956fbf7f216124659605aaafac926d` |
+| Previous Source Hash | `0xba7076ab5cd7ccf50374e6eae7c15824662c9d37c1b7b83e3f82165af8c40d43` |
+| Buys | 12 |
+| Sells | 20 |
+| Changes | 32 |
+| Finalized block | 25654635 |
+| Finalization tx | `0xdea39c0c8f321b3da4308971fe209bc4958d8693061d8dab8a7247a88a77b70e` |
+| Contract | `0x65c0E98a4fE050e64E16754119C76EEbd4E660cc` |
+| Required confirmations | 20 |
+| Verified | yes |
+
+## Program
+
+| Slot | Instruction |
+| --- | --- |
+| 0 | EMPTY |
+| 1 | SWAP |
+| 2 | LOOP |
+| 3 | EMPTY |
+| 4 | PUSH |
+| 5 | SWAP |
+| 6 | EMPTY |
+| 7 | PUSH |
+| 8 | SWAP |
+| 9 | EMPTY |
+| 10 | EMPTY |
+| 11 | LOOP |
+| 12 | SWAP |
+| 13 | EMPTY |
+| 14 | SWAP |
+| 15 | SWAP |
+
+## Changes
+
+All 32 changes in blockchain order.
+
+| Revision | Direction | Slot | Transition | Block | Transaction |
+| --- | --- | --- | --- | --- | --- |
+| 129 | SELL | 1 | EMPTY → LOOP | 25654630 | `0x13f3cdd160d87c8ebb393755a2dc9c803f897a1d6459406bcd314c848461d7ea` |
+| 130 | SELL | 2 | LOOP → SWAP | 25654630 | `0x9d449232118b5900f2f0ba5316c0ba229840ed22666a05709019871854454c39` |
+| 131 | SELL | 5 | PUSH → EMPTY | 25654630 | `0x0bdb9f7405fad0539877619d56b070b46a8134485f0fa2637645bb25f1cc54d8` |
+| 132 | SELL | 15 | LOOP → SWAP | 25654630 | `0x81cd7ab21a3f23ac3d5cb3d97860108321cd355a2ff8431aca80a58a03cc66bd` |
+| 133 | BUY | 5 | EMPTY → PUSH | 25654631 | `0xe0460053b6450f64427386da9f03d20d2286d847080d20f83d6a3296681d8c38` |
+| 134 | BUY | 5 | PUSH → SWAP | 25654631 | `0x835fa596343071e7f9b6ed607ab397af32101d4d6954318934b093c75cd219c6` |
+| 135 | SELL | 1 | LOOP → SWAP | 25654631 | `0x67494bec3f20516e34bb07fc1733ea251b74031496a54476ae75850ec6b32780` |
+| 136 | SELL | 9 | EMPTY → LOOP | 25654631 | `0x1b8bdbd8f8fa50ae5b77b89417ba6c71dc6f49fa9a173ec6791d6242988bfe03` |
+| 137 | BUY | 6 | PUSH → SWAP | 25654631 | `0x26dacc142ac376ae23597485e3dc11cb2fca402add7e722fb42e63fc0896e295` |
+| 138 | BUY | 11 | SWAP → LOOP | 25654631 | `0x9050fe811909db2bb482b1747bf855e5fd060ffbca89755c6fe048e605b0ec61` |
+| 139 | BUY | 13 | PUSH → SWAP | 25654631 | `0x2e173800535a57a9445ffaaab3da7a35e4713c3f49c783871183ef665b4a5462` |
+| 140 | BUY | 12 | EMPTY → PUSH | 25654631 | `0xecbeb0acea591851d2353ed1116127946ad06a1bb71a1c4c96b9ce4933f69349` |
+| 141 | SELL | 12 | PUSH → EMPTY | 25654632 | `0x5ce1cebe97257fb5ced7e216f0e24a1408e9cf97fe0b01c7a9ce129dadd96961` |
+| 142 | SELL | 2 | SWAP → PUSH | 25654632 | `0x0092a4a455d83286bb87c0eeaf9ec5071d8244c78e10452e378cdf15fe802a06` |
+| 143 | BUY | 3 | LOOP → EMPTY | 25654632 | `0x13522f019aca0f9e2da574297664775a226db9346505c86d9064255fb2e7cf2f` |
+| 144 | BUY | 4 | PUSH → SWAP | 25654632 | `0xc1fa14b331b8a10b5205011460fc3cf2e6e17cb306cf7e50653b3121cee298be` |
+| 145 | SELL | 2 | PUSH → EMPTY | 25654632 | `0xaa592cefa4a27c343420070523e9ecf68fb9952eaf32bb1096cbdf2a47c35fe0` |
+| 146 | BUY | 9 | LOOP → EMPTY | 25654633 | `0x5cd3204105513c38d40c4ffd3f79b69141207d425bbcc32a4b002565cd657ea6` |
+| 147 | SELL | 12 | EMPTY → LOOP | 25654633 | `0xd1c754c890873e17fdfd435ecd9fffe5290b42573700fbb5445d6ae9cd72666a` |
+| 148 | BUY | 1 | SWAP → LOOP | 25654633 | `0xd5648239d7f716a9cd4d3098c94dbc8a3b932a69fd26efedc3145dce82cf3fd0` |
+| 149 | SELL | 6 | SWAP → PUSH | 25654633 | `0x7f0ff2b0231577145919d817d8924d9151cc0cbb9861ecc29d084ba49b1c1b58` |
+| 150 | SELL | 0 | PUSH → EMPTY | 25654633 | `0x35d2c93fe53db7c0a4d170e76c5205fb2097bdff1e48326d5d6ba76fc90a8f96` |
+| 151 | SELL | 13 | SWAP → PUSH | 25654634 | `0x49bd5bf5f527a5ce68d14636e07cb70c81d9ebcfa2f91e6eb1d0f186f8e873fa` |
+| 152 | SELL | 2 | EMPTY → LOOP | 25654634 | `0x8b9893fa6d3b5bbc1b76efb70951d0c428cf854f30787617f5229bdea9685b3b` |
+| 153 | SELL | 13 | PUSH → EMPTY | 25654634 | `0x3a95fbb27a4a1cfd2d28318c6220837689db4dfd26a3cd67f46bf86e4a0b2891` |
+| 154 | SELL | 12 | LOOP → SWAP | 25654634 | `0x97a73b8c2dbc676398b54d28aedee44f47c14d9dc57542e97d86418dce90fb2e` |
+| 155 | BUY | 10 | LOOP → EMPTY | 25654634 | `0xa1706a353953bfdfcb9df7beb2f658dcfc7a7461afac79bcc43e597dfb765527` |
+| 156 | SELL | 4 | SWAP → PUSH | 25654634 | `0x4cbdedc6f2453164e886f7ad044f11b42aba59bdaba7f3f56025d9d8c42ab8d0` |
+| 157 | SELL | 0 | EMPTY → LOOP | 25654634 | `0x12275a387559be887bd821cfedb5e444177004ccc90ab709547de7dd73379fb2` |
+| 158 | SELL | 1 | LOOP → SWAP | 25654634 | `0x4066305b91a39b896c629b8ba664e9406d16ffcbfdd1ae716ccb31d6c335183c` |
+| 159 | SELL | 6 | PUSH → EMPTY | 25654635 | `0x2f3d515b890d1b4605176e616f8266596fced063932adff3601352761488283f` |
+| 160 | BUY | 0 | LOOP → EMPTY | 25654635 | `0xdea39c0c8f321b3da4308971fe209bc4958d8693061d8dab8a7247a88a77b70e` |
