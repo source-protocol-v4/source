@@ -22,8 +22,19 @@ them here as plain files anyone can read.
 
 <!-- SOURCE:BEGIN -->
 
-Nothing sealed yet — this block fills in automatically with the current program once the first
-release is mirrored.
+```
+┌────────────────────────────────────────────┐
+│   0  1  2  3  4  5  6  7                   │
+│  █  ▒  ░  ▒  ░  ▓  ▒  █     THE PROGRAM    │
+│                                            │
+│   8  9 10 11 12 13 14 15                   │
+│  ▒  ▓  ▓  ▓  █  ▓  █  ░                    │
+└────────────────────────────────────────────┘
+```
+
+**v0.46** · revision 1504 · 47 releases sealed · `0x3ba9d847`
+
+<sub>00 LOOP · 01 PUSH · 02 EMPTY · 03 PUSH · 04 EMPTY · 05 SWAP · 06 PUSH · 07 LOOP · 08 PUSH · 09 SWAP · 10 SWAP · 11 SWAP · 12 LOOP · 13 SWAP · 14 LOOP · 15 EMPTY</sub>
 
 <!-- SOURCE:END -->
 
