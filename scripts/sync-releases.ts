@@ -34,7 +34,14 @@ import {
 } from '../lib/contract.js';
 import { RELEASE_SIZE } from '../lib/source-codec.js';
 import { GENESIS_HASH, GENESIS_STATE, verifyRelease, type VerifiedRelease } from '../lib/verify.js';
-import { releaseDirName, renderRelease } from '../lib/release-files.js';
+import {
+  releaseDirName,
+  renderHistory,
+  renderLatestJson,
+  renderReadmeBlock,
+  renderRelease,
+  spliceReadmeBlock,
+} from '../lib/release-files.js';
 
 /** `SwapTaxed` carries the trader label that `SourceChanged` does not. */
 const SWAP_TAXED_EVENT = parseAbiItem(
@@ -125,6 +132,8 @@ async function main(): Promise<void> {
   const skipped: Array<{ id: bigint; reason: string }> = [];
   /** Set when the RPC gave out mid-run; the run keeps its progress but still exits non-zero. */
   let networkFailure: string | null = null;
+  /** The newest release verified this run, used to refresh the repository-level summaries. */
+  let latestVerified: VerifiedRelease | null = null;
 
   for (const [index, id] of missing.entries()) {
     // Space out the per-release reads. Without this, mirroring a long backlog fires one request
@@ -189,12 +198,19 @@ async function main(): Promise<void> {
       console.log(`  v0.${id}  verified, already up to date`);
     }
 
+    latestVerified = verified;
     state = verified.state;
     hash = verified.hash;
   }
 
   for (const { id, reason } of skipped) {
     console.log(`  v0.${id}  not yet mirrored: ${reason}`);
+  }
+
+  // Repository-level summaries follow the newest release, so they are refreshed whenever one was
+  // added. They are derived entirely from already-verified data — no extra RPC calls.
+  if (written.length > 0 && latestVerified) {
+    await writeSummaries(latestVerified, Number(totalReleases));
   }
 
   if (written.length === 0) {
@@ -407,6 +423,105 @@ async function writeRelease(release: VerifiedRelease): Promise<boolean> {
     changed = true;
   }
   return changed;
+}
+
+/**
+ * Refresh the repository-level summaries: `releases/latest.json`, `releases/HISTORY.md` and the
+ * generated block in the root README.
+ *
+ * All three are derived from data that has already been verified, so nothing here can introduce an
+ * unverified claim. Each is written only when its bytes actually change, preserving idempotence.
+ * A missing README block is not an error — the splice is a no-op when the markers are absent.
+ */
+async function writeSummaries(latest: VerifiedRelease, totalReleases: number): Promise<void> {
+  await writeIfChanged(
+    path.join(RELEASES_DIR, 'latest.json'),
+    renderLatestJson(latest, totalReleases),
+  );
+
+  const history = await readMirroredReleases();
+  if (history.length > 0) {
+    await writeIfChanged(path.join(RELEASES_DIR, 'HISTORY.md'), renderHistory(history));
+  }
+
+  // Sits beside the releases directory, so a run pointed at a scratch directory by the test suite
+  // never touches the repository's own README.
+  const readmePath = path.join(path.dirname(RELEASES_DIR), 'README.md');
+  if (existsSync(readmePath)) {
+    const readme = await readFile(readmePath, 'utf8');
+    const spliced = spliceReadmeBlock(readme, renderReadmeBlock(latest, totalReleases));
+    if (spliced !== readme) {
+      await writeFile(readmePath, spliced, 'utf8');
+      console.log('  README.md  program banner updated');
+    }
+  }
+}
+
+/** Write only when the contents differ, so an unchanged file is never touched. */
+async function writeIfChanged(file: string, contents: string): Promise<void> {
+  const existing = existsSync(file) ? await readFile(file, 'utf8') : null;
+  if (existing === contents) return;
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, contents, 'utf8');
+  console.log(`  ${path.basename(file)}  updated`);
+}
+
+/**
+ * Read every mirrored release back off disk, oldest first, so the history covers releases from
+ * earlier runs and not only the ones added just now.
+ *
+ * The files were written from verified data, and `verify-release` re-checks them against the
+ * chain, so reading them back here does not weaken any guarantee.
+ */
+async function readMirroredReleases(): Promise<VerifiedRelease[]> {
+  if (!existsSync(RELEASES_DIR)) return [];
+  const entries = await readdir(RELEASES_DIR, { withFileTypes: true });
+  const ids = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => /^v0\.(\d+)$/.exec(entry.name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => BigInt(match[1] as string))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+  const releases: VerifiedRelease[] = [];
+  for (const id of ids) {
+    const file = path.join(RELEASES_DIR, releaseDirName(id), 'release.json');
+    if (!existsSync(file)) continue;
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as {
+      releaseId: string;
+      revision: string;
+      packedStateDecimal: string;
+      sourceHash: Hex;
+      previousSourceHash: Hex | null;
+      buys: number;
+      sells: number;
+      finalizedBlock: string;
+      chainId: number;
+      contract: Address;
+      instructions: Array<{ op: number }>;
+    };
+    releases.push({
+      id: BigInt(parsed.releaseId),
+      chainId: parsed.chainId,
+      contractAddress: parsed.contract,
+      state: Number(parsed.packedStateDecimal),
+      program: parsed.instructions.map((entry) => entry.op) as VerifiedRelease['program'],
+      hash: parsed.sourceHash,
+      previousHash: parsed.previousSourceHash,
+      finalRevision: BigInt(parsed.revision),
+      finalizedBlock: BigInt(parsed.finalizedBlock),
+      buys: parsed.buys,
+      sells: parsed.sells,
+      // Not recorded in release.json and not used by the history table.
+      confirmations: 0n,
+      requiredConfirmations: 0n,
+      changes: [],
+      finalizationTransaction: '0x',
+      finalizationBlockHash: '0x',
+      finalizationLogIndex: 0,
+    });
+  }
+  return releases;
 }
 
 /** Publish results to `$GITHUB_OUTPUT` when running under Actions; a no-op locally. */

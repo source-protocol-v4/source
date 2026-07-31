@@ -14,6 +14,13 @@ program is sealed and becomes a release, permanently recorded on the blockchain.
 
 Release `0` covers the first thirty-two changes, release `1` the next thirty-two, and so on.
 
+Two files sit alongside the release folders and are refreshed whenever a new release is mirrored:
+
+| File | What it is |
+| --- | --- |
+| [`latest.json`](latest.json) | the newest release, at a fixed path — handy for scripts and badges |
+| [`HISTORY.md`](HISTORY.md) | every release in one table, oldest first |
+
 ## What is in each folder
 
 | File | What it is |

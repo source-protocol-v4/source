@@ -4,12 +4,19 @@ import { test, describe } from 'node:test';
 import { parseProgram } from '../lib/source-codec.js';
 import { verifyRelease } from '../lib/verify.js';
 import {
+  README_BEGIN,
+  README_END,
   releaseDirName,
+  renderHistory,
+  renderLatestJson,
+  renderProgramArt,
+  renderReadmeBlock,
   renderRelease,
   renderChangesJson,
   renderProofJson,
   renderReleaseJson,
   renderSourceSrc,
+  spliceReadmeBlock,
   stableJson,
 } from '../lib/release-files.js';
 import { buildReleases, verificationInput } from './helpers.js';
@@ -176,5 +183,98 @@ describe('file contents', () => {
       'release.json',
       'source.src',
     ]);
+  });
+});
+
+describe('repository-level summaries', () => {
+  test('latest.json reports the newest release and the total', () => {
+    const json = JSON.parse(renderLatestJson(verified, 21)) as Record<string, unknown>;
+    assert.equal(json.releaseId, verified.id.toString());
+    assert.equal(json.name, `v0.${verified.id}`);
+    assert.equal(json.totalReleases, 21);
+    assert.equal(json.sourceHash, verified.hash);
+    assert.equal(json.revision, verified.finalRevision.toString());
+    assert.equal(json.verified, true);
+    assert.equal((json.program as string[]).length, 16);
+    assert.equal((json.glyphs as string).length, 16);
+  });
+
+  test('latest.json exposes exactly the fields the badges query', () => {
+    // The README badges read $.name, $.totalReleases and $.revision. Renaming any of them
+    // silently breaks the badges, so pin them here.
+    const json = JSON.parse(renderLatestJson(verified, 3)) as Record<string, unknown>;
+    for (const field of ['name', 'totalReleases', 'revision']) {
+      assert.ok(field in json, `badge field ${field} is missing from latest.json`);
+    }
+  });
+
+  test('the program art is a closed box of equal-width lines', () => {
+    const lines = renderProgramArt(verified).split('\n');
+    assert.equal(lines.length, 7);
+    const width = [...(lines[0] as string)].length;
+    for (const [index, line] of lines.entries()) {
+      assert.equal([...line].length, width, `line ${index} is a different width`);
+    }
+    assert.ok(lines[0]?.startsWith('┌') && lines[0]?.endsWith('┐'));
+    assert.ok(lines[6]?.startsWith('└') && lines[6]?.endsWith('┘'));
+    for (const line of lines.slice(1, 6)) {
+      assert.ok(line.startsWith('│') && line.endsWith('│'), 'a body line is not framed');
+    }
+  });
+
+  test('the README block carries the release, revision and every slot', () => {
+    const block = renderReadmeBlock(verified, 7);
+    assert.ok(block.startsWith(README_BEGIN));
+    assert.ok(block.endsWith(README_END));
+    assert.ok(block.includes(`v0.${verified.id}`));
+    assert.ok(block.includes(`revision ${verified.finalRevision}`));
+    assert.ok(block.includes('7 releases sealed'));
+    for (let slot = 0; slot < 16; slot++) {
+      assert.ok(block.includes(String(slot).padStart(2, '0')), `slot ${slot} missing from legend`);
+    }
+  });
+
+  test('the README block singularises a lone release', () => {
+    assert.ok(renderReadmeBlock(verified, 1).includes('1 release sealed'));
+  });
+
+  test('splicing replaces only the marked block', () => {
+    const readme = `# Title\n\nintro\n\n${README_BEGIN}\nold content\n${README_END}\n\noutro\n`;
+    const spliced = spliceReadmeBlock(readme, renderReadmeBlock(verified, 2));
+    assert.ok(spliced.startsWith('# Title\n\nintro\n\n'), 'text before the block is preserved');
+    assert.ok(spliced.endsWith('\n\noutro\n'), 'text after the block is preserved');
+    assert.ok(!spliced.includes('old content'), 'the old block is gone');
+    assert.ok(spliced.includes(`v0.${verified.id}`));
+  });
+
+  test('splicing is idempotent', () => {
+    const readme = `intro\n${README_BEGIN}\nx\n${README_END}\noutro\n`;
+    const block = renderReadmeBlock(verified, 2);
+    const once = spliceReadmeBlock(readme, block);
+    assert.equal(spliceReadmeBlock(once, block), once, 'a second splice must change nothing');
+  });
+
+  test('a README without markers is left untouched', () => {
+    const readme = '# Title\n\njust prose, no markers\n';
+    assert.equal(spliceReadmeBlock(readme, renderReadmeBlock(verified, 1)), readme);
+  });
+
+  test('HISTORY lists every release oldest first', () => {
+    const releases = buildReleases(3).map((built) => verifyRelease(verificationInput(built)));
+    const history = renderHistory(releases);
+    assert.ok(history.startsWith('# History\n'));
+    for (const release of releases) {
+      assert.ok(history.includes(`[v0.${release.id}]`), `v0.${release.id} missing`);
+    }
+    const first = history.indexOf('[v0.0]');
+    const last = history.indexOf('[v0.2]');
+    assert.ok(first > 0 && last > first, 'releases must be listed oldest first');
+    assert.ok(history.endsWith('\n'));
+  });
+
+  test('the summaries are deterministic', () => {
+    assert.equal(renderLatestJson(verified, 5), renderLatestJson(verified, 5));
+    assert.equal(renderReadmeBlock(verified, 5), renderReadmeBlock(verified, 5));
+    assert.equal(renderProgramArt(verified), renderProgramArt(verified));
   });
 });

@@ -178,3 +178,132 @@ export function renderRelease(release: VerifiedRelease): ReleaseFiles {
     'README.md': renderReleaseReadme(release),
   };
 }
+
+// ── repository-level summaries ───────────────────────────────────────────────────────────────
+//
+// These describe the mirror as a whole rather than one release, so they are rewritten on every
+// run that adds a release. They stay deterministic under the same rules as everything above: a
+// given latest release always renders the same bytes.
+
+/** The block characters the contract's own header art uses, indexed by opcode. */
+const OP_GLYPHS = ['░', '▒', '▓', '█'] as const;
+
+/**
+ * `releases/latest.json` — the newest release, always at a fixed path.
+ *
+ * Gives shields.io a stable endpoint for dynamic badges and anyone else a one-request way to read
+ * the current state without listing directories.
+ */
+export function renderLatestJson(release: VerifiedRelease, totalReleases: number): string {
+  return stableJson({
+    releaseId: release.id.toString(),
+    name: `v0.${release.id}`,
+    totalReleases,
+    revision: release.finalRevision.toString(),
+    packedState: formatState(release.state),
+    sourceHash: release.hash,
+    previousSourceHash: release.previousHash,
+    buys: release.buys,
+    sells: release.sells,
+    finalizedBlock: release.finalizedBlock.toString(),
+    chainId: release.chainId,
+    contract: release.contractAddress,
+    program: release.program.map((op: Op) => instructionName(op)),
+    glyphs: release.program.map((op: Op) => OP_GLYPHS[op]).join(''),
+    verified: true,
+  });
+}
+
+/**
+ * The program drawn as the contract's own header art: two rows of eight glyphs, one per slot.
+ * Slot 0 is the top-left, matching the numbering in `source.src`.
+ */
+export function renderProgramArt(release: VerifiedRelease): string {
+  const glyph = (slot: number): string => OP_GLYPHS[release.program[slot] as Op];
+  const row = (start: number): string =>
+    Array.from({ length: 8 }, (_, i) => glyph(start + i)).join('  ');
+  const indices = (start: number): string =>
+    Array.from({ length: 8 }, (_, i) => String(start + i).padStart(2, ' ')).join(' ');
+
+  // The frame is 44 characters wide inside the borders; every line is padded to exactly that so
+  // the box closes regardless of the glyphs in it.
+  const WIDTH = 44;
+  const line = (body: string): string => `│${body.padEnd(WIDTH, ' ')}│`;
+
+  return [
+    `┌${'─'.repeat(WIDTH)}┐`,
+    line(`  ${indices(0)}`),
+    line(`  ${row(0)}     THE PROGRAM`),
+    line(''),
+    line(`  ${indices(8)}`),
+    line(`  ${row(8)}`),
+    `└${'─'.repeat(WIDTH)}┘`,
+  ].join('\n');
+}
+
+/** The marker pair delimiting the generated block in the root README. */
+export const README_BEGIN = '<!-- SOURCE:BEGIN -->';
+export const README_END = '<!-- SOURCE:END -->';
+
+/**
+ * The generated block for the root README: the current program as art, plus the headline numbers.
+ * Rendered between {@link README_BEGIN} and {@link README_END} so the surrounding prose is never
+ * touched.
+ */
+export function renderReadmeBlock(release: VerifiedRelease, totalReleases: number): string {
+  const legend = release.program
+    .map((op: Op, slot: number) => `${String(slot).padStart(2, '0')} ${instructionName(op)}`)
+    .join(' · ');
+
+  return [
+    README_BEGIN,
+    '',
+    '```',
+    renderProgramArt(release),
+    '```',
+    '',
+    `**v0.${release.id}** · revision ${release.finalRevision} · ${totalReleases} release${totalReleases === 1 ? '' : 's'} sealed · \`${formatState(release.state)}\``,
+    '',
+    `<sub>${legend}</sub>`,
+    '',
+    README_END,
+  ].join('\n');
+}
+
+/**
+ * Splice the generated block into a README, replacing whatever sits between the markers.
+ * Returns the text unchanged when the markers are absent, so a hand-edited README is never
+ * mangled by an automated run.
+ */
+export function spliceReadmeBlock(readme: string, block: string): string {
+  const start = readme.indexOf(README_BEGIN);
+  const end = readme.indexOf(README_END);
+  if (start < 0 || end < 0 || end < start) return readme;
+  return readme.slice(0, start) + block + readme.slice(end + README_END.length);
+}
+
+/**
+ * `releases/HISTORY.md` — every mirrored release in one table, oldest first.
+ *
+ * `releases` must already be ordered by id; the caller owns that ordering because it also owns
+ * which releases exist.
+ */
+export function renderHistory(releases: readonly VerifiedRelease[]): string {
+  const rows = releases
+    .map((release) => {
+      const art = release.program.map((op: Op) => OP_GLYPHS[op]).join('');
+      return `| [v0.${release.id}](v0.${release.id}/) | \`${art}\` | ${release.finalRevision} | ${release.buys} | ${release.sells} | ${release.finalizedBlock} | \`${formatState(release.state)}\` |`;
+    })
+    .join('\n');
+
+  return `# History
+
+Every sealed release, oldest first. Each row is the program as it stood when that release closed.
+
+Glyphs: \`${OP_GLYPHS[0]}\` EMPTY · \`${OP_GLYPHS[1]}\` PUSH · \`${OP_GLYPHS[2]}\` SWAP · \`${OP_GLYPHS[3]}\` LOOP — slot 0 leftmost.
+
+| Release | Program | Revision | Buys | Sells | Block | State |
+| --- | --- | --- | --- | --- | --- | --- |
+${rows}
+`;
+}

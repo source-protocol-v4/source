@@ -4,12 +4,28 @@
 
 <h1 align="center">SOURCE — release mirror</h1>
 
+<p align="center">
+  <img alt="latest release" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsource-protocol-v4%2Fsource%2Fmain%2Freleases%2Flatest.json&query=%24.name&label=latest&color=e8637a">
+  <img alt="releases sealed" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsource-protocol-v4%2Fsource%2Fmain%2Freleases%2Flatest.json&query=%24.totalReleases&label=releases&color=e8637a">
+  <img alt="revision" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsource-protocol-v4%2Fsource%2Fmain%2Freleases%2Flatest.json&query=%24.revision&label=revision&color=e8637a">
+  <img alt="sync status" src="https://github.com/source-protocol-v4/source/actions/workflows/sync-source.yml/badge.svg">
+</p>
+
 SOURCE is a token that carries a small program inside it — sixteen instructions that trading
 rewrites. Every buy nudges one instruction forward, every sell nudges one back, and after
 thirty-two changes the program is sealed into a permanent **release**.
 
 This repository is a mirror of those releases. It reads them from Ethereum, checks them, and keeps
 them here as plain files anyone can read.
+
+## The program right now
+
+<!-- SOURCE:BEGIN -->
+
+Nothing sealed yet — this block fills in automatically with the current program once the first
+release is mirrored.
+
+<!-- SOURCE:END -->
 
 ## Why this exists
 

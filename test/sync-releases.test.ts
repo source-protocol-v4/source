@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +26,7 @@ import {
 } from 'viem';
 
 import { SOURCE_ABI } from '../lib/contract.js';
+import { README_BEGIN, README_END } from '../lib/release-files.js';
 import { TEST_CHAIN_ID, TEST_CONTRACT, buildReleases, type BuiltRelease } from './helpers.js';
 
 const execFileAsync = promisify(execFile);
@@ -340,6 +341,13 @@ describe('sync-releases', () => {
     url = started.url;
 
     workdir = await mkdtemp(path.join(os.tmpdir(), 'source-mirror-'));
+    // A stand-in for the repository README, so the banner splice has somewhere to land instead of
+    // touching the real one.
+    await writeFile(
+      path.join(workdir, 'README.md'),
+      `# Mirror\n\nintro\n\n${README_BEGIN}\n\nnothing yet\n\n${README_END}\n\noutro\n`,
+      'utf8',
+    );
   });
 
   after(async () => {
@@ -430,6 +438,42 @@ describe('sync-releases', () => {
     assert.equal(changes.changes[0]?.trader, TRADER, 'the trader is resolved from SwapTaxed');
   });
 
+  test('writes the repository-level summaries alongside the releases', async () => {
+    // The banner lands beside the releases directory, so give this run its own parent.
+    const parent = path.join(workdir, 'summaries');
+    await mkdir(parent, { recursive: true });
+    await writeFile(
+      path.join(parent, 'README.md'),
+      `# Mirror\n\n${README_BEGIN}\n\nnothing yet\n\n${README_END}\n`,
+      'utf8',
+    );
+    const dir = path.join(parent, 'releases');
+    state.visible = 2;
+    const second = state.releases[1];
+    assert.ok(second);
+    state.headBlock = second.storage.finalizedBlock + 50n;
+
+    const result = await runSync(dir);
+    assert.equal(result.code, 0, result.stderr);
+
+    const latest = JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8')) as {
+      name: string;
+      totalReleases: number;
+      revision: string;
+    };
+    assert.equal(latest.name, 'v0.1', 'latest.json tracks the newest mirrored release');
+    assert.equal(latest.totalReleases, 2);
+    assert.equal(latest.revision, second.storage.finalRevision.toString());
+
+    const history = await readFile(path.join(dir, 'HISTORY.md'), 'utf8');
+    assert.ok(history.includes('[v0.0]') && history.includes('[v0.1]'), 'HISTORY lists both');
+
+    // The README beside the releases directory gets its banner spliced in.
+    const readme = await readFile(path.join(path.dirname(dir), 'README.md'), 'utf8');
+    assert.ok(readme.includes('THE PROGRAM'), 'the banner was written');
+    assert.ok(readme.includes('v0.1'), 'the banner names the newest release');
+  });
+
   test('repeated synchronization with no new releases changes nothing', async () => {
     const dir = path.join(workdir, 'idempotent');
     state.visible = 1;
@@ -491,9 +535,12 @@ describe('sync-releases', () => {
     assert.equal(result.code, 0, result.stderr);
     assert.deepEqual(await listReleases(dir), ['v0.0', 'v0.1']);
 
-    // the already-mirrored release must not be rewritten
+    // The already-mirrored release must not be rewritten. The repository-level summaries
+    // (latest.json, HISTORY.md) deliberately do change, since they track the newest release.
+    const after = await snapshotDir(dir);
     for (const [name, contents] of Object.entries(before)) {
-      assert.equal((await snapshotDir(dir))[name], contents, `${name} was rewritten`);
+      if (!name.startsWith('v0.')) continue;
+      assert.equal(after[name], contents, `${name} was rewritten`);
     }
   });
 

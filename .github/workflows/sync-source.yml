@@ -75,8 +75,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Stage only generated release files. Nothing else this job touched can enter a commit.
-          git add --all -- releases/
+          # Stage only generated output: the release files and the README banner the sync
+          # refreshes from them. Nothing else this job touched can enter a commit.
+          git add --all -- releases/ README.md
 
           # No empty commits: if staging produced no change, stop here rather than committing.
           if git diff --cached --quiet; then
