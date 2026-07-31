@@ -115,6 +115,8 @@ async function main(): Promise<void> {
   let hash = previous.hash;
   const written: bigint[] = [];
   const skipped: Array<{ id: bigint; reason: string }> = [];
+  /** Set when the RPC gave out mid-run; the run keeps its progress but still exits non-zero. */
+  let networkFailure: string | null = null;
 
   for (const id of missing) {
     const storage = await readRelease(client, config, id);
@@ -139,7 +141,18 @@ async function main(): Promise<void> {
       break;
     }
 
-    const traders = await resolveTraders(client, config, changes);
+    let traders: Map<string, Address>;
+    try {
+      traders = await resolveTraders(client, config, changes);
+    } catch (error: unknown) {
+      // A transport failure (rate limit, timeout) is not a verification failure: stop here and keep
+      // whatever earlier releases were already verified, so the run still commits its progress and
+      // the next run resumes from this id. A verification error is never caught — it must fail.
+      networkFailure = describeNetworkError(error);
+      if (!networkFailure) throw error;
+      console.warn(`  v0.${id}  stopping early: ${networkFailure}`);
+      break;
+    }
 
     // 6-8. Full verification. Any mismatch throws and fails the run.
     const verified = verifyRelease(
@@ -177,25 +190,69 @@ async function main(): Promise<void> {
 
   if (written.length === 0) {
     console.log('no new release files written.');
-    return;
+  } else {
+    // The workflow reads these to build its commit message without re-deriving anything.
+    const first = written[0] as bigint;
+    const last = written[written.length - 1] as bigint;
+    const message =
+      written.length === 1
+        ? `release: mirror SOURCE v0.${first}`
+        : `release: mirror SOURCE v0.${first}-v0.${last}`;
+
+    console.log(`written: ${written.map((id) => `v0.${id}`).join(', ')}`);
+    await emitOutputs({
+      released: 'true',
+      count: String(written.length),
+      first: `v0.${first}`,
+      last: `v0.${last}`,
+      message,
+    });
   }
 
-  // The workflow reads these to build its commit message without re-deriving anything.
-  const first = written[0] as bigint;
-  const last = written[written.length - 1] as bigint;
-  const message =
-    written.length === 1
-      ? `release: mirror SOURCE v0.${first}`
-      : `release: mirror SOURCE v0.${first}-v0.${last}`;
+  // Surface the transport failure after the outputs are emitted, so the workflow still commits the
+  // releases that were verified before the RPC gave out. The next run picks up the rest.
+  if (networkFailure) {
+    throw new RpcUnavailableError(
+      `${networkFailure} — mirrored ${written.length} release(s) this run, remaining ones will be retried next run`,
+    );
+  }
+}
 
-  console.log(`written: ${written.map((id) => `v0.${id}`).join(', ')}`);
-  await emitOutputs({
-    released: 'true',
-    count: String(written.length),
-    first: `v0.${first}`,
-    last: `v0.${last}`,
-    message,
-  });
+/** A run cut short by the RPC rather than by bad chain data. */
+class RpcUnavailableError extends Error {
+  override name = 'RpcUnavailableError';
+}
+
+/**
+ * Describe a transport-level failure, or return null if this is not one.
+ *
+ * Only RPC transport problems qualify — rate limits, timeouts, connection resets, 5xx. A
+ * verification error means the chain data disagrees with the mirror and must never be softened
+ * into "try again later".
+ */
+function describeNetworkError(error: unknown): string | null {
+  if (error instanceof VerificationError || error instanceof ConfigError) return null;
+  if (!(error instanceof Error)) return null;
+
+  const status = (error as { status?: number }).status;
+  if (status === 429) return 'RPC rate limit (HTTP 429)';
+  if (typeof status === 'number' && status >= 500) return `RPC server error (HTTP ${status})`;
+
+  const name = error.name;
+  if (
+    name === 'HttpRequestError' ||
+    name === 'TimeoutError' ||
+    name === 'RpcRequestError' ||
+    name === 'InternalRpcError'
+  ) {
+    return `RPC transport failure (${name})`;
+  }
+
+  const code = (error as { code?: string }).code;
+  if (code && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'].includes(code)) {
+    return `network failure (${code})`;
+  }
+  return null;
 }
 
 /** Ids already present in `releases/`, read from directory names. */
@@ -288,23 +345,49 @@ async function resolveTraders(
   config: SourceConfig,
   changes: SourceChangedLog[],
 ): Promise<Map<string, Address>> {
-  const blocks = [...new Set(changes.map((change) => change.blockNumber))].sort((a, b) =>
-    a < b ? -1 : a > b ? 1 : 0,
-  );
+  const blocks = changes.map((change) => change.blockNumber);
   const traders = new Map<string, Address>();
+  if (blocks.length === 0) return traders;
+
+  // One chunked scan over the whole span the release occupies, rather than one request per block.
+  // A release's 32 changes are usually spread over many blocks, and a per-block query multiplies
+  // into hundreds of calls that a rate-limited provider will reject.
+  let from = blocks[0] as bigint;
+  let to = from;
   for (const block of blocks) {
-    const logs = await client.getLogs({
-      address: config.address,
-      event: SWAP_TAXED_EVENT,
-      fromBlock: block,
-      toBlock: block,
-    });
-    for (const log of logs) {
-      const trader = (log.args as { trader?: Address }).trader;
-      if (trader && log.transactionHash) traders.set(log.transactionHash.toLowerCase(), trader);
-    }
+    if (block < from) from = block;
+    if (block > to) to = block;
+  }
+
+  const logs = await getSwapTaxedLogs(client, config, from, to);
+  for (const log of logs) {
+    const trader = (log.args as { trader?: Address }).trader;
+    if (trader && log.transactionHash) traders.set(log.transactionHash.toLowerCase(), trader);
   }
   return traders;
+}
+
+/** Fetch `SwapTaxed` logs in chunks, so a bounded-range provider does not reject the query. */
+async function getSwapTaxedLogs(
+  client: PublicClient,
+  config: SourceConfig,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<Array<{ args: unknown; transactionHash: Hex | null }>> {
+  const chunk = 10_000n;
+  const collected: Array<{ args: unknown; transactionHash: Hex | null }> = [];
+  for (let from = fromBlock; from <= toBlock; from += chunk) {
+    const to = from + chunk - 1n > toBlock ? toBlock : from + chunk - 1n;
+    collected.push(
+      ...(await client.getLogs({
+        address: config.address,
+        event: SWAP_TAXED_EVENT,
+        fromBlock: from,
+        toBlock: to,
+      })),
+    );
+  }
+  return collected;
 }
 
 /** Write a verified release. Returns true when anything on disk actually changed. */
@@ -333,7 +416,11 @@ async function emitOutputs(outputs: Record<string, string>): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof ConfigError || error instanceof VerificationError) {
+  if (
+    error instanceof ConfigError ||
+    error instanceof VerificationError ||
+    error instanceof RpcUnavailableError
+  ) {
     console.error(`${error.name}: ${error.message}`);
   } else {
     console.error(error);

@@ -49,6 +49,11 @@ interface MockState {
   /** How many releases the contract reports as finalized. */
   visible: number;
   headBlock: bigint;
+  /**
+   * When set, the mock answers `eth_getLogs` for `SwapTaxed` with HTTP 429 after this many such
+   * requests have succeeded — standing in for a provider's rate limit kicking in mid-run.
+   */
+  rateLimitSwapLogsAfter?: number;
 }
 
 /**
@@ -143,11 +148,30 @@ function startMockNode(state: MockState): Promise<{ server: Server; url: string 
     }
   };
 
+  const [swapTopicForLimit] = encodeEventTopics({ abi: [SWAP_TAXED_EVENT], eventName: 'SwapTaxed' });
+  let swapLogRequests = 0;
+  const isSwapTaxedQuery = (request: { method: string; params?: unknown[] }): boolean => {
+    if (request.method !== 'eth_getLogs') return false;
+    const filter = request.params?.[0] as { topics?: (Hex | null)[] } | undefined;
+    return filter?.topics?.[0] === swapTopicForLimit;
+  };
+
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       const request = JSON.parse(body) as { id: number; method: string; params?: unknown[] };
+
+      // Simulate a provider rate limit on SwapTaxed log queries once the budget is used up.
+      if (state.rateLimitSwapLogsAfter !== undefined && isSwapTaxedQuery(request)) {
+        if (swapLogRequests >= state.rateLimitSwapLogsAfter) {
+          res.writeHead(429, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Too Many Requests' }));
+          return;
+        }
+        swapLogRequests++;
+      }
+
       let payload: unknown;
       try {
         payload = { jsonrpc: '2.0', id: request.id, result: handle(request.method, request.params ?? []) };
@@ -325,6 +349,7 @@ describe('sync-releases', () => {
             CHAIN_ID: String(TEST_CHAIN_ID),
             CONFIRMATIONS: '20',
             SOURCE_RELEASES_DIR: releasesDir,
+            SOURCE_RPC_RETRY_DELAY_MS: '1',
           },
         },
       );
@@ -531,6 +556,31 @@ describe('sync-releases', () => {
     }
   });
 
+  test('keeps verified releases when the RPC rate-limits mid-run, and retries the rest later', async () => {
+    const dir = path.join(workdir, 'ratelimited');
+    state.visible = 3;
+    const third = state.releases[2];
+    assert.ok(third);
+    state.headBlock = third.storage.finalizedBlock + 50n;
+
+    // Let the first release resolve its traders, then rate-limit everything after it.
+    state.rateLimitSwapLogsAfter = 1;
+    try {
+      const limited = await runSync(dir);
+      assert.equal(limited.code, 1, 'a truncated run must still fail loudly');
+      assert.match(limited.stderr, /RpcUnavailableError/);
+      assert.match(limited.stderr, /rate limit/i);
+      assert.deepEqual(await listReleases(dir), ['v0.0'], 'the verified release is kept');
+    } finally {
+      delete state.rateLimitSwapLogsAfter;
+    }
+
+    // With the limit lifted, the next run mirrors the remaining releases.
+    const resumed = await runSync(dir);
+    assert.equal(resumed.code, 0, resumed.stderr);
+    assert.deepEqual(await listReleases(dir), ['v0.0', 'v0.1', 'v0.2']);
+  });
+
   test('rejects a misconfigured environment before touching the chain', async () => {
     const dir = path.join(workdir, 'badconfig');
     const cases: Array<[Record<string, string>, RegExp]> = [
@@ -561,6 +611,7 @@ describe('sync-releases', () => {
           CHAIN_ID: String(TEST_CHAIN_ID),
           CONFIRMATIONS: '20',
           SOURCE_RELEASES_DIR: releasesDir,
+          SOURCE_RPC_RETRY_DELAY_MS: '1',
           ...overrides,
         },
       });

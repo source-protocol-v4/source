@@ -8,6 +8,7 @@
 
 import {
   createPublicClient,
+  fallback,
   http,
   getAddress,
   isAddress,
@@ -104,7 +105,8 @@ export interface ReleaseFinalizedLog {
 
 /** The environment this mirror runs against. */
 export interface SourceConfig {
-  rpcUrl: string;
+  /** Every configured endpoint, in priority order. The first is the primary. */
+  rpcUrls: string[];
   address: Address;
   deploymentBlock: bigint;
   chainId: number;
@@ -127,16 +129,23 @@ const DEFAULT_CONFIRMATIONS = 20n;
  * before it touches the network — never halfway through writing release files.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): SourceConfig {
-  const rpcUrl = (env.ETH_RPC_URL ?? '').trim();
-  if (!rpcUrl) throw new ConfigError('ETH_RPC_URL is not set');
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(rpcUrl);
-  } catch {
-    throw new ConfigError(`ETH_RPC_URL is not a valid URL: ${rpcUrl}`);
-  }
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new ConfigError(`ETH_RPC_URL must be http(s), got ${parsedUrl.protocol}`);
+  // ETH_RPC_URL may hold several endpoints, separated by commas or newlines. Extras are used as
+  // fallbacks when the primary rate-limits or fails, so a free-tier provider does not sink a run.
+  const rpcUrls = (env.ETH_RPC_URL ?? '')
+    .split(/[,\n]/)
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  if (rpcUrls.length === 0) throw new ConfigError('ETH_RPC_URL is not set');
+  for (const url of rpcUrls) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new ConfigError(`ETH_RPC_URL is not a valid URL: ${url}`);
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new ConfigError(`ETH_RPC_URL must be http(s), got ${parsedUrl.protocol}`);
+    }
   }
 
   const rawAddress = (env.SOURCE_ADDRESS ?? '').trim();
@@ -155,7 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SourceConfig {
   const confirmations = parseBigint(env.CONFIRMATIONS, 'CONFIRMATIONS') ?? DEFAULT_CONFIRMATIONS;
   if (confirmations < 0n) throw new ConfigError('CONFIRMATIONS must not be negative');
 
-  return { rpcUrl, address, deploymentBlock, chainId, confirmations };
+  return { rpcUrls, address, deploymentBlock, chainId, confirmations };
 }
 
 function parseBigint(raw: string | undefined, label: string): bigint | undefined {
@@ -167,10 +176,26 @@ function parseBigint(raw: string | undefined, label: string): bigint | undefined
   return BigInt(value);
 }
 
+/**
+ * Build the read client.
+ *
+ * `retryDelay` is the base of viem's exponential backoff, so a 429 waits ~1s, ~2s, ~4s … rather
+ * than hammering a rate-limited endpoint. When several RPC URLs are configured they are wrapped in
+ * a fallback transport: a request that keeps failing on one endpoint is retried on the next, which
+ * is what keeps a free-tier provider's rate limit from failing the whole run.
+ */
 export function createClient(config: SourceConfig): PublicClient {
+  // SOURCE_RPC_RETRY_DELAY_MS only exists so the test suite can collapse the backoff; a real run
+  // always wants the patient default.
+  const retryDelay = Number(process.env.SOURCE_RPC_RETRY_DELAY_MS ?? 1_000);
+  const options = { batch: false, retryCount: 5, retryDelay, timeout: 30_000 } as const;
+  const transports = config.rpcUrls.map((url) => http(url, options));
   return createPublicClient({
     chain: config.chainId === mainnet.id ? mainnet : undefined,
-    transport: http(config.rpcUrl, { batch: false, retryCount: 3, retryDelay: 500 }),
+    transport:
+      transports.length === 1
+        ? (transports[0] as ReturnType<typeof http>)
+        : fallback(transports, { rank: false, retryCount: 2 }),
   }) as PublicClient;
 }
 
