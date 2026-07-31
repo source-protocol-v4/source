@@ -474,6 +474,44 @@ describe('sync-releases', () => {
     assert.ok(readme.includes('v0.1'), 'the banner names the newest release');
   });
 
+  test('backfills missing summaries for releases mirrored before they existed', async () => {
+    // Reproduces upgrading a mirror that already holds every release: nothing new to fetch, but
+    // latest.json and HISTORY.md do not exist yet and must still be produced.
+    const parent = path.join(workdir, 'backfill');
+    await mkdir(parent, { recursive: true });
+    await writeFile(
+      path.join(parent, 'README.md'),
+      `# Mirror\n\n${README_BEGIN}\n\nnothing yet\n\n${README_END}\n`,
+      'utf8',
+    );
+    const dir = path.join(parent, 'releases');
+    state.visible = 2;
+    const second = state.releases[1];
+    assert.ok(second);
+    state.headBlock = second.storage.finalizedBlock + 50n;
+
+    assert.equal((await runSync(dir)).code, 0);
+    await rm(path.join(dir, 'latest.json'), { force: true });
+    await rm(path.join(dir, 'HISTORY.md'), { force: true });
+
+    // A second run mirrors nothing, yet must restore the summaries.
+    const result = await runSync(dir);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /already mirrored/);
+    assert.ok(existsSync(path.join(dir, 'latest.json')), 'latest.json was backfilled');
+    assert.ok(existsSync(path.join(dir, 'HISTORY.md')), 'HISTORY.md was backfilled');
+
+    const latest = JSON.parse(await readFile(path.join(dir, 'latest.json'), 'utf8')) as {
+      name: string;
+    };
+    assert.equal(latest.name, 'v0.1');
+
+    // And a further run, with everything in place, changes nothing at all.
+    const snapshot = await snapshotDir(dir);
+    assert.equal((await runSync(dir)).code, 0);
+    assert.deepEqual(await snapshotDir(dir), snapshot, 'a settled run must stay idempotent');
+  });
+
   test('repeated synchronization with no new releases changes nothing', async () => {
     const dir = path.join(workdir, 'idempotent');
     state.visible = 1;

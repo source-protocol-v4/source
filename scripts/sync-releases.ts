@@ -97,6 +97,10 @@ async function main(): Promise<void> {
 
   if (missing.length === 0) {
     console.log('every finalized release is already mirrored — nothing to do.');
+    // The summaries are derived from the mirrored releases, so they can be rebuilt without the
+    // chain. Backfill them when they are missing — after an upgrade that introduced them, say —
+    // rather than waiting for the next release to trigger a write.
+    await backfillSummaries(Number(totalReleases));
     return;
   }
   console.log(`missing locally: ${missing.map((id) => `v0.${id}`).join(', ')}`);
@@ -426,6 +430,31 @@ async function writeRelease(release: VerifiedRelease): Promise<boolean> {
 }
 
 /**
+ * Rebuild the summaries from the releases already on disk, for a run that added nothing.
+ *
+ * Everything they contain was verified when its release was mirrored, so no chain access is
+ * needed. `writeSummaries` only touches files whose bytes differ, which keeps this a no-op once
+ * the summaries are in place — the idempotence of a quiet run is preserved.
+ */
+async function backfillSummaries(totalReleases: number): Promise<void> {
+  const mirrored = await readMirroredReleases();
+  const latest = mirrored[mirrored.length - 1];
+  if (!latest) return;
+  const updated = await writeSummaries(latest, totalReleases, mirrored);
+  if (updated) {
+    // Nothing was mirrored, but generated files did change, so the workflow still has something
+    // worth committing.
+    await emitOutputs({
+      released: 'true',
+      count: '0',
+      first: `v0.${latest.id}`,
+      last: `v0.${latest.id}`,
+      message: 'chore: refresh SOURCE mirror summaries',
+    });
+  }
+}
+
+/**
  * Refresh the repository-level summaries: `releases/latest.json`, `releases/HISTORY.md` and the
  * generated block in the root README.
  *
@@ -433,15 +462,24 @@ async function writeRelease(release: VerifiedRelease): Promise<boolean> {
  * unverified claim. Each is written only when its bytes actually change, preserving idempotence.
  * A missing README block is not an error — the splice is a no-op when the markers are absent.
  */
-async function writeSummaries(latest: VerifiedRelease, totalReleases: number): Promise<void> {
-  await writeIfChanged(
-    path.join(RELEASES_DIR, 'latest.json'),
-    renderLatestJson(latest, totalReleases),
-  );
+async function writeSummaries(
+  latest: VerifiedRelease,
+  totalReleases: number,
+  known?: readonly VerifiedRelease[],
+): Promise<boolean> {
+  let changed = false;
 
-  const history = await readMirroredReleases();
+  changed =
+    (await writeIfChanged(
+      path.join(RELEASES_DIR, 'latest.json'),
+      renderLatestJson(latest, totalReleases),
+    )) || changed;
+
+  const history = known ?? (await readMirroredReleases());
   if (history.length > 0) {
-    await writeIfChanged(path.join(RELEASES_DIR, 'HISTORY.md'), renderHistory(history));
+    changed =
+      (await writeIfChanged(path.join(RELEASES_DIR, 'HISTORY.md'), renderHistory(history))) ||
+      changed;
   }
 
   // Sits beside the releases directory, so a run pointed at a scratch directory by the test suite
@@ -453,17 +491,24 @@ async function writeSummaries(latest: VerifiedRelease, totalReleases: number): P
     if (spliced !== readme) {
       await writeFile(readmePath, spliced, 'utf8');
       console.log('  README.md  program banner updated');
+      changed = true;
     }
   }
+
+  return changed;
 }
 
-/** Write only when the contents differ, so an unchanged file is never touched. */
-async function writeIfChanged(file: string, contents: string): Promise<void> {
+/**
+ * Write only when the contents differ, so an unchanged file is never touched.
+ * Returns whether anything was actually written.
+ */
+async function writeIfChanged(file: string, contents: string): Promise<boolean> {
   const existing = existsSync(file) ? await readFile(file, 'utf8') : null;
-  if (existing === contents) return;
+  if (existing === contents) return false;
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, contents, 'utf8');
   console.log(`  ${path.basename(file)}  updated`);
+  return true;
 }
 
 /**
