@@ -229,12 +229,28 @@ export async function validateDeployment(
     );
   }
 
-  const [slotCount, releaseSize, bitsPerSlot, slotMask] = await Promise.all([
-    client.readContract({ address: config.address, abi: SOURCE_ABI, functionName: 'SLOT_COUNT' }),
-    client.readContract({ address: config.address, abi: SOURCE_ABI, functionName: 'RELEASE_SIZE' }),
-    client.readContract({ address: config.address, abi: SOURCE_ABI, functionName: 'BITS_PER_SLOT' }),
-    client.readContract({ address: config.address, abi: SOURCE_ABI, functionName: 'SLOT_MASK' }),
-  ]);
+  // Sequential, not Promise.all: four simultaneous calls are a burst that a rate-limited provider
+  // may reject outright, and this runs before anything has been verified.
+  const slotCount = await client.readContract({
+    address: config.address,
+    abi: SOURCE_ABI,
+    functionName: 'SLOT_COUNT',
+  });
+  const releaseSize = await client.readContract({
+    address: config.address,
+    abi: SOURCE_ABI,
+    functionName: 'RELEASE_SIZE',
+  });
+  const bitsPerSlot = await client.readContract({
+    address: config.address,
+    abi: SOURCE_ABI,
+    functionName: 'BITS_PER_SLOT',
+  });
+  const slotMask = await client.readContract({
+    address: config.address,
+    abi: SOURCE_ABI,
+    functionName: 'SLOT_MASK',
+  });
 
   assertConstant('SLOT_COUNT', slotCount, 16n);
   assertConstant('RELEASE_SIZE', releaseSize, BigInt(RELEASE_SIZE));

@@ -50,6 +50,12 @@ const RELEASES_DIR = process.env.SOURCE_RELEASES_DIR
   ? path.resolve(process.env.SOURCE_RELEASES_DIR)
   : path.join(REPO_ROOT, 'releases');
 
+/** Pause between per-release reads, so a long backlog does not burst past a provider's rate limit. */
+const REQUEST_SPACING_MS = Number(process.env.SOURCE_REQUEST_SPACING_MS ?? 250);
+
+const sleep = (ms: number): Promise<void> =>
+  ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const client = createClient(config);
@@ -99,12 +105,14 @@ async function main(): Promise<void> {
   const scanFrom = previous.block ?? config.deploymentBlock;
   console.log(`scanning events from block ${scanFrom} to ${headBlock}`);
 
-  const [finalizedLogs, changeLogs] = await Promise.all([
-    fetchReleaseFinalizedLogs(client, config, scanFrom, headBlock),
-    fetchSourceChangedLogs(client, config, scanFrom, headBlock),
-  ]);
+  // Every log the whole run needs, fetched once over the full range and then indexed in memory.
+  // Anything per-release here would multiply into one request per release and trip a provider's
+  // rate limit as soon as several releases are outstanding.
+  const finalizedLogs = await fetchReleaseFinalizedLogs(client, config, scanFrom, headBlock);
+  const changeLogs = await fetchSourceChangedLogs(client, config, scanFrom, headBlock);
+  const traders = await fetchTraders(client, config, scanFrom, headBlock);
   console.log(
-    `fetched ${finalizedLogs.length} ReleaseFinalized and ${changeLogs.length} SourceChanged event(s)`,
+    `fetched ${finalizedLogs.length} ReleaseFinalized, ${changeLogs.length} SourceChanged and ${traders.size} trader label(s)`,
   );
 
   const finalizedById = indexFinalizedLogs(finalizedLogs);
@@ -118,8 +126,22 @@ async function main(): Promise<void> {
   /** Set when the RPC gave out mid-run; the run keeps its progress but still exits non-zero. */
   let networkFailure: string | null = null;
 
-  for (const id of missing) {
-    const storage = await readRelease(client, config, id);
+  for (const [index, id] of missing.entries()) {
+    // Space out the per-release reads. Without this, mirroring a long backlog fires one request
+    // per release back-to-back, which is exactly what a free-tier provider rate-limits.
+    if (index > 0) await sleep(REQUEST_SPACING_MS);
+
+    // The one unavoidable per-release request. A transport failure here is not a verification
+    // failure: stop, keep everything already verified, and let the next run resume from this id.
+    let storage: Release;
+    try {
+      storage = await readRelease(client, config, id);
+    } catch (error: unknown) {
+      networkFailure = describeNetworkError(error);
+      if (!networkFailure) throw error;
+      console.log(`  v0.${id}  stopping early: ${networkFailure}`);
+      break;
+    }
 
     const finalized = finalizedById.get(id);
     if (!finalized) {
@@ -138,19 +160,6 @@ async function main(): Promise<void> {
         id,
         reason: `only ${depth} of ${config.confirmations} required confirmations`,
       });
-      break;
-    }
-
-    let traders: Map<string, Address>;
-    try {
-      traders = await resolveTraders(client, config, changes);
-    } catch (error: unknown) {
-      // A transport failure (rate limit, timeout) is not a verification failure: stop here and keep
-      // whatever earlier releases were already verified, so the run still commits its progress and
-      // the next run resumes from this id. A verification error is never caught — it must fail.
-      networkFailure = describeNetworkError(error);
-      if (!networkFailure) throw error;
-      console.warn(`  v0.${id}  stopping early: ${networkFailure}`);
       break;
     }
 
@@ -232,25 +241,33 @@ class RpcUnavailableError extends Error {
  */
 function describeNetworkError(error: unknown): string | null {
   if (error instanceof VerificationError || error instanceof ConfigError) return null;
-  if (!(error instanceof Error)) return null;
 
-  const status = (error as { status?: number }).status;
-  if (status === 429) return 'RPC rate limit (HTTP 429)';
-  if (typeof status === 'number' && status >= 500) return `RPC server error (HTTP ${status})`;
+  // viem wraps transport errors in higher-level ones (ContractFunctionExecutionError around an
+  // HttpRequestError, say), so the HTTP status lives further down the `cause` chain than the
+  // error we were handed. Walk it rather than only inspecting the outermost error.
+  for (let current: unknown = error, depth = 0; current && depth < 10; depth++) {
+    if (!(current instanceof Error)) break;
 
-  const name = error.name;
-  if (
-    name === 'HttpRequestError' ||
-    name === 'TimeoutError' ||
-    name === 'RpcRequestError' ||
-    name === 'InternalRpcError'
-  ) {
-    return `RPC transport failure (${name})`;
-  }
+    const status = (current as { status?: number }).status;
+    if (status === 429) return 'RPC rate limit (HTTP 429)';
+    if (typeof status === 'number' && status >= 500) return `RPC server error (HTTP ${status})`;
 
-  const code = (error as { code?: string }).code;
-  if (code && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'].includes(code)) {
-    return `network failure (${code})`;
+    const name = current.name;
+    if (
+      name === 'HttpRequestError' ||
+      name === 'TimeoutError' ||
+      name === 'RpcRequestError' ||
+      name === 'InternalRpcError'
+    ) {
+      return `RPC transport failure (${name})`;
+    }
+
+    const code = (current as { code?: string }).code;
+    if (code && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND'].includes(code)) {
+      return `network failure (${code})`;
+    }
+
+    current = (current as { cause?: unknown }).cause;
   }
   return null;
 }
@@ -337,57 +354,42 @@ function collectChanges(id: bigint, byRevision: Map<bigint, SourceChangedLog>): 
 }
 
 /**
- * Map each change's transaction to its `SwapTaxed` trader. One `getLogs` call per distinct block
- * touched by the release, which is far fewer than one per transaction.
+ * Map every transaction in the scanned range to its `SwapTaxed` trader label.
+ *
+ * Fetched once for the whole run, in the same wide chunks as the other event scans. The trader is
+ * cosmetic — `SourceChanged` does not carry it and the contract never reads it for authorization —
+ * so a provider that refuses this query degrades the label to the zero address rather than failing
+ * the run: the releases themselves are still fully verified from `SourceChanged`.
  */
-async function resolveTraders(
-  client: PublicClient,
-  config: SourceConfig,
-  changes: SourceChangedLog[],
-): Promise<Map<string, Address>> {
-  const blocks = changes.map((change) => change.blockNumber);
-  const traders = new Map<string, Address>();
-  if (blocks.length === 0) return traders;
-
-  // One chunked scan over the whole span the release occupies, rather than one request per block.
-  // A release's 32 changes are usually spread over many blocks, and a per-block query multiplies
-  // into hundreds of calls that a rate-limited provider will reject.
-  let from = blocks[0] as bigint;
-  let to = from;
-  for (const block of blocks) {
-    if (block < from) from = block;
-    if (block > to) to = block;
-  }
-
-  const logs = await getSwapTaxedLogs(client, config, from, to);
-  for (const log of logs) {
-    const trader = (log.args as { trader?: Address }).trader;
-    if (trader && log.transactionHash) traders.set(log.transactionHash.toLowerCase(), trader);
-  }
-  return traders;
-}
-
-/** Fetch `SwapTaxed` logs in chunks, so a bounded-range provider does not reject the query. */
-async function getSwapTaxedLogs(
+async function fetchTraders(
   client: PublicClient,
   config: SourceConfig,
   fromBlock: bigint,
   toBlock: bigint,
-): Promise<Array<{ args: unknown; transactionHash: Hex | null }>> {
+): Promise<Map<string, Address>> {
+  const traders = new Map<string, Address>();
   const chunk = 10_000n;
-  const collected: Array<{ args: unknown; transactionHash: Hex | null }> = [];
-  for (let from = fromBlock; from <= toBlock; from += chunk) {
-    const to = from + chunk - 1n > toBlock ? toBlock : from + chunk - 1n;
-    collected.push(
-      ...(await client.getLogs({
+  try {
+    for (let from = fromBlock; from <= toBlock; from += chunk) {
+      const to = from + chunk - 1n > toBlock ? toBlock : from + chunk - 1n;
+      const logs = await client.getLogs({
         address: config.address,
         event: SWAP_TAXED_EVENT,
         fromBlock: from,
         toBlock: to,
-      })),
-    );
+      });
+      for (const log of logs) {
+        const trader = (log.args as { trader?: Address }).trader;
+        if (trader && log.transactionHash) traders.set(log.transactionHash.toLowerCase(), trader);
+      }
+    }
+  } catch (error: unknown) {
+    const failure = describeNetworkError(error);
+    if (!failure) throw error;
+    console.log(`  trader labels unavailable (${failure}) — recording them as the zero address`);
+    return new Map();
   }
-  return collected;
+  return traders;
 }
 
 /** Write a verified release. Returns true when anything on disk actually changed. */

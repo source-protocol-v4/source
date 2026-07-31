@@ -54,6 +54,8 @@ interface MockState {
    * requests have succeeded — standing in for a provider's rate limit kicking in mid-run.
    */
   rateLimitSwapLogsAfter?: number;
+  /** Same, for the per-release `releaseAt` storage reads. */
+  rateLimitReleaseAtAfter?: number;
 }
 
 /**
@@ -156,20 +158,32 @@ function startMockNode(state: MockState): Promise<{ server: Server; url: string 
     return filter?.topics?.[0] === swapTopicForLimit;
   };
 
+  const releaseAtSelector = selectorOf('releaseAt');
+  let releaseAtRequests = 0;
+  const isReleaseAtQuery = (request: { method: string; params?: unknown[] }): boolean => {
+    if (request.method !== 'eth_call') return false;
+    const call = request.params?.[0] as { data?: Hex } | undefined;
+    return call?.data?.slice(0, 10) === releaseAtSelector;
+  };
+
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       const request = JSON.parse(body) as { id: number; method: string; params?: unknown[] };
 
-      // Simulate a provider rate limit on SwapTaxed log queries once the budget is used up.
-      if (state.rateLimitSwapLogsAfter !== undefined && isSwapTaxedQuery(request)) {
-        if (swapLogRequests >= state.rateLimitSwapLogsAfter) {
-          res.writeHead(429, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Too Many Requests' }));
-          return;
-        }
-        swapLogRequests++;
+      // Simulate a provider rate limit once the configured budget is used up.
+      const rateLimited =
+        (state.rateLimitSwapLogsAfter !== undefined &&
+          isSwapTaxedQuery(request) &&
+          swapLogRequests++ >= state.rateLimitSwapLogsAfter) ||
+        (state.rateLimitReleaseAtAfter !== undefined &&
+          isReleaseAtQuery(request) &&
+          releaseAtRequests++ >= state.rateLimitReleaseAtAfter);
+      if (rateLimited) {
+        res.writeHead(429, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Too Many Requests' }));
+        return;
       }
 
       let payload: unknown;
@@ -556,6 +570,35 @@ describe('sync-releases', () => {
     }
   });
 
+  test('still mirrors every release when the trader-label query is rate-limited', async () => {
+    // SwapTaxed only supplies a cosmetic label. A provider refusing it must not stop the mirror:
+    // the releases are verified from SourceChanged, which is fetched separately.
+    const dir = path.join(workdir, 'notraders');
+    state.visible = 3;
+    const third = state.releases[2];
+    assert.ok(third);
+    state.headBlock = third.storage.finalizedBlock + 50n;
+    state.rateLimitSwapLogsAfter = 0;
+
+    try {
+      const result = await runSync(dir);
+      assert.equal(result.code, 0, result.stderr);
+      assert.deepEqual(await listReleases(dir), ['v0.0', 'v0.1', 'v0.2']);
+      assert.match(result.stdout, /trader labels unavailable/);
+
+      const changes = JSON.parse(await readFile(path.join(dir, 'v0.0', 'changes.json'), 'utf8')) as {
+        changes: Array<{ trader: string }>;
+      };
+      assert.equal(
+        changes.changes[0]?.trader,
+        '0x0000000000000000000000000000000000000000',
+        'an unresolved trader degrades to the zero address',
+      );
+    } finally {
+      delete state.rateLimitSwapLogsAfter;
+    }
+  });
+
   test('keeps verified releases when the RPC rate-limits mid-run, and retries the rest later', async () => {
     const dir = path.join(workdir, 'ratelimited');
     state.visible = 3;
@@ -563,8 +606,8 @@ describe('sync-releases', () => {
     assert.ok(third);
     state.headBlock = third.storage.finalizedBlock + 50n;
 
-    // Let the first release resolve its traders, then rate-limit everything after it.
-    state.rateLimitSwapLogsAfter = 1;
+    // Let the first release be read, then rate-limit the per-release storage reads after it.
+    state.rateLimitReleaseAtAfter = 1;
     try {
       const limited = await runSync(dir);
       assert.equal(limited.code, 1, 'a truncated run must still fail loudly');
@@ -572,7 +615,7 @@ describe('sync-releases', () => {
       assert.match(limited.stderr, /rate limit/i);
       assert.deepEqual(await listReleases(dir), ['v0.0'], 'the verified release is kept');
     } finally {
-      delete state.rateLimitSwapLogsAfter;
+      delete state.rateLimitReleaseAtAfter;
     }
 
     // With the limit lifted, the next run mirrors the remaining releases.
