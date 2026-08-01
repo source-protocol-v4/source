@@ -1,0 +1,15 @@
+{
+  "releaseId": "66",
+  "chainId": 1,
+  "contract": "0x65c0E98a4fE050e64E16754119C76EEbd4E660cc",
+  "finalizationTransaction": "0xcbd9d85cfea1dc6aafe63e15961b8a52ed6aed70dc3fd1096fef8cf9b8ff9881",
+  "finalizationBlockNumber": "25659043",
+  "finalizationBlockHash": "0x176044038ee82ce4565a592ec26faa34c00d946b51963ac6858c7d18bcd04050",
+  "finalizationEventIndex": 694,
+  "requiredConfirmations": "20",
+  "sourceHash": "0xbbe40f252b38dcf54854be383ffc17f22efaf642d63e755a80c65906c05dec9d",
+  "previousSourceHash": "0xaeedd94a89c9ed9901120e131e5636fd03cc8e1227f6ef70c27d0a5e9f3c97d9",
+  "finalRevision": "2144",
+  "packedState": "0x28700f2a",
+  "verified": true
+}

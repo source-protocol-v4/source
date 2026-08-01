@@ -1,0 +1,98 @@
+{
+  "releaseId": "62",
+  "name": "v0.62",
+  "revision": "2016",
+  "packedState": "0x378ddab0",
+  "packedStateDecimal": "932043440",
+  "sourceHash": "0x2b23f9dfcc89deea2570bd54a868871e7891ec2b492686a1bfe2a1d41db20c4a",
+  "previousSourceHash": "0xeac33212f3f0ceb3ee6c99a80607fd23a06fcf7ed4482b4eb15fcffff6eaa3b7",
+  "buys": 20,
+  "sells": 12,
+  "changes": 32,
+  "finalizedBlock": "25658481",
+  "chainId": 1,
+  "contract": "0x65c0E98a4fE050e64E16754119C76EEbd4E660cc",
+  "instructions": [
+    {
+      "slot": 0,
+      "op": 0,
+      "instruction": "EMPTY"
+    },
+    {
+      "slot": 1,
+      "op": 0,
+      "instruction": "EMPTY"
+    },
+    {
+      "slot": 2,
+      "op": 3,
+      "instruction": "LOOP"
+    },
+    {
+      "slot": 3,
+      "op": 2,
+      "instruction": "SWAP"
+    },
+    {
+      "slot": 4,
+      "op": 2,
+      "instruction": "SWAP"
+    },
+    {
+      "slot": 5,
+      "op": 2,
+      "instruction": "SWAP"
+    },
+    {
+      "slot": 6,
+      "op": 1,
+      "instruction": "PUSH"
+    },
+    {
+      "slot": 7,
+      "op": 3,
+      "instruction": "LOOP"
+    },
+    {
+      "slot": 8,
+      "op": 1,
+      "instruction": "PUSH"
+    },
+    {
+      "slot": 9,
+      "op": 3,
+      "instruction": "LOOP"
+    },
+    {
+      "slot": 10,
+      "op": 0,
+      "instruction": "EMPTY"
+    },
+    {
+      "slot": 11,
+      "op": 2,
+      "instruction": "SWAP"
+    },
+    {
+      "slot": 12,
+      "op": 3,
+      "instruction": "LOOP"
+    },
+    {
+      "slot": 13,
+      "op": 1,
+      "instruction": "PUSH"
+    },
+    {
+      "slot": 14,
+      "op": 3,
+      "instruction": "LOOP"
+    },
+    {
+      "slot": 15,
+      "op": 0,
+      "instruction": "EMPTY"
+    }
+  ],
+  "verified": true
+}
