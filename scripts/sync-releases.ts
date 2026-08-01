@@ -38,9 +38,13 @@ import {
   releaseDirName,
   renderHistory,
   renderLatestJson,
+  renderProgramSvg,
   renderReadmeBlock,
   renderRelease,
+  renderReleaseIndex,
+  renderStats,
   spliceReadmeBlock,
+  type ChangeSummary,
 } from '../lib/release-files.js';
 
 /** `SwapTaxed` carries the trader label that `SourceChanged` does not. */
@@ -475,11 +479,35 @@ async function writeSummaries(
       renderLatestJson(latest, totalReleases),
     )) || changed;
 
+  changed =
+    (await writeIfChanged(
+      path.join(RELEASES_DIR, 'program.svg'),
+      renderProgramSvg(latest, totalReleases),
+    )) || changed;
+
   const history = known ?? (await readMirroredReleases());
   if (history.length > 0) {
     changed =
       (await writeIfChanged(path.join(RELEASES_DIR, 'HISTORY.md'), renderHistory(history))) ||
       changed;
+
+    changed =
+      (await writeIfChanged(
+        path.join(RELEASES_DIR, 'STATS.md'),
+        renderStats(history, await readAllChanges(history)),
+      )) || changed;
+
+    // The releases README carries a generated index between the same markers the root README uses.
+    const indexPath = path.join(RELEASES_DIR, 'README.md');
+    if (existsSync(indexPath)) {
+      const current = await readFile(indexPath, 'utf8');
+      const spliced = spliceReadmeBlock(current, renderReleaseIndex(history));
+      if (spliced !== current) {
+        await writeFile(indexPath, spliced, 'utf8');
+        console.log('  releases/README.md  index updated');
+        changed = true;
+      }
+    }
   }
 
   // Sits beside the releases directory, so a run pointed at a scratch directory by the test suite
@@ -496,6 +524,32 @@ async function writeSummaries(
   }
 
   return changed;
+}
+
+/**
+ * Read every mirrored release's `changes.json` for the statistics tally.
+ *
+ * Only the three fields the tallies read are kept, so holding every change of every release in
+ * memory stays cheap even after thousands of them.
+ */
+async function readAllChanges(releases: readonly VerifiedRelease[]): Promise<ChangeSummary[]> {
+  const summaries: ChangeSummary[] = [];
+  for (const release of releases) {
+    const file = path.join(RELEASES_DIR, releaseDirName(release.id), 'changes.json');
+    if (!existsSync(file)) continue;
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as {
+      changes?: Array<{ slot?: number; direction?: string; trader?: string }>;
+    };
+    for (const change of parsed.changes ?? []) {
+      if (typeof change.slot !== 'number') continue;
+      summaries.push({
+        slot: change.slot,
+        direction: change.direction === 'SELL' ? 'SELL' : 'BUY',
+        trader: change.trader ?? '0x0000000000000000000000000000000000000000',
+      });
+    }
+  }
+  return summaries;
 }
 
 /**

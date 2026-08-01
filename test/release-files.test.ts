@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, describe } from 'node:test';
 
-import { parseProgram } from '../lib/source-codec.js';
+import { instructionName, parseProgram } from '../lib/source-codec.js';
 import { verifyRelease } from '../lib/verify.js';
 import {
   README_BEGIN,
@@ -10,11 +10,14 @@ import {
   renderHistory,
   renderLatestJson,
   renderProgramArt,
+  renderProgramSvg,
   renderReadmeBlock,
   renderRelease,
   renderChangesJson,
   renderProofJson,
   renderReleaseJson,
+  renderReleaseIndex,
+  renderStats,
   renderSourceSrc,
   spliceReadmeBlock,
   stableJson,
@@ -276,5 +279,134 @@ describe('repository-level summaries', () => {
     assert.equal(renderLatestJson(verified, 5), renderLatestJson(verified, 5));
     assert.equal(renderReadmeBlock(verified, 5), renderReadmeBlock(verified, 5));
     assert.equal(renderProgramArt(verified), renderProgramArt(verified));
+    assert.equal(renderProgramSvg(verified, 5), renderProgramSvg(verified, 5));
+  });
+});
+
+describe('program.svg', () => {
+  test('is a self-contained SVG with one cell per slot', () => {
+    const svg = renderProgramSvg(verified, 9);
+    assert.ok(svg.startsWith('<svg '), 'starts as an svg element');
+    assert.ok(svg.trimEnd().endsWith('</svg>'), 'closes the svg element');
+    assert.equal((svg.match(/rx="14"/g) ?? []).length, 16, 'sixteen instruction cells');
+    assert.ok(svg.includes(`v0.${verified.id}`));
+    assert.ok(svg.includes(`revision ${verified.finalRevision}`));
+    assert.ok(svg.includes('9 releases sealed'));
+  });
+
+  test('references nothing outside itself', () => {
+    // An SVG that pulls a font or an image would break wherever the network is blocked, and
+    // GitHub strips such references anyway.
+    const svg = renderProgramSvg(verified, 1);
+    const external = (svg.match(/https?:\/\/[^"']+/g) ?? []).filter(
+      (url) => !url.startsWith('http://www.w3.org/'),
+    );
+    assert.deepEqual(external, [], 'no external references');
+    assert.ok(!svg.includes('<script'), 'no scripts');
+    assert.ok(!svg.includes('<image'), 'no embedded images');
+  });
+
+  test('names every instruction in the program', () => {
+    const svg = renderProgramSvg(verified, 1);
+    for (const op of new Set(verified.program)) {
+      assert.ok(svg.includes(instructionName(op)), `${instructionName(op)} is drawn`);
+    }
+  });
+
+  test('singularises a lone release', () => {
+    assert.ok(renderProgramSvg(verified, 1).includes('1 release sealed'));
+  });
+});
+
+describe('STATS.md', () => {
+  const releases = buildReleases(2).map((built) => verifyRelease(verificationInput(built)));
+  const changes = releases.flatMap((release) =>
+    release.changes.map((change) => ({
+      slot: change.slot,
+      direction: change.direction,
+      trader: change.trader,
+    })),
+  );
+
+  test('counts releases, changes and directions', () => {
+    const stats = renderStats(releases, changes);
+    assert.ok(stats.includes(`| Releases | ${releases.length} |`));
+    assert.ok(stats.includes(`| Changes | ${changes.length} |`));
+
+    const buys = changes.filter((change) => change.direction === 'BUY').length;
+    assert.ok(stats.includes(`| Buys | ${buys} (`), 'buy count and share');
+    assert.ok(stats.includes(`| Sells | ${changes.length - buys} (`), 'sell count and share');
+  });
+
+  test('has a row for every one of the sixteen slots', () => {
+    const stats = renderStats(releases, changes);
+    for (let slot = 0; slot < 16; slot++) {
+      assert.ok(
+        stats.includes(`| ${String(slot).padStart(2, '0')} | \``),
+        `slot ${slot} has a row`,
+      );
+    }
+  });
+
+  test('the per-slot counts add up to the total', () => {
+    const stats = renderStats(releases, changes);
+    const counts = [...stats.matchAll(/^\| \d\d \| `[^`]+` \| (\d+) \|/gm)].map((match) =>
+      Number(match[1]),
+    );
+    assert.equal(counts.length, 16);
+    assert.equal(
+      counts.reduce((sum, count) => sum + count, 0),
+      changes.length,
+      'every change is counted exactly once',
+    );
+  });
+
+  test('ranks traders and ignores the zero address', () => {
+    const withZero = [
+      ...changes,
+      { slot: 0, direction: 'BUY' as const, trader: '0x0000000000000000000000000000000000000000' },
+    ];
+    const stats = renderStats(releases, withZero);
+    assert.ok(!stats.includes('| 1 | `0x0000000000000000000000000000000000000000`'));
+  });
+
+  test('handles an empty mirror without dividing by zero', () => {
+    const stats = renderStats([], []);
+    assert.ok(stats.includes('| Changes | 0 |'));
+    assert.ok(!stats.includes('NaN'), 'no NaN leaks into the output');
+    assert.ok(stats.includes('No trader labels recorded'));
+  });
+
+  test('is deterministic', () => {
+    assert.equal(renderStats(releases, changes), renderStats(releases, changes));
+  });
+});
+
+describe('the releases index', () => {
+  test('lists the newest releases first, capped at the limit', () => {
+    const releases = buildReleases(5).map((built) => verifyRelease(verificationInput(built)));
+    const index = renderReleaseIndex(releases, 3);
+    assert.ok(index.startsWith(README_BEGIN) && index.endsWith(README_END));
+    assert.ok(index.includes('5 releases mirrored'));
+
+    const order = [...index.matchAll(/\[v0\.(\d+)\]/g)].map((match) => Number(match[1]));
+    assert.deepEqual(order, [4, 3, 2], 'newest first, limited to three');
+    assert.ok(index.includes('2 older releases not shown'));
+  });
+
+  test('says nothing about omissions when everything fits', () => {
+    const releases = buildReleases(2).map((built) => verifyRelease(verificationInput(built)));
+    const index = renderReleaseIndex(releases, 20);
+    assert.ok(!index.includes('not shown'));
+    assert.ok(index.includes('HISTORY.md'));
+  });
+
+  test('splices into the releases README like the root banner does', () => {
+    const releases = buildReleases(2).map((built) => verifyRelease(verificationInput(built)));
+    const readme = `# Releases\n\nintro\n\n${README_BEGIN}\nold\n${README_END}\n\noutro\n`;
+    const spliced = spliceReadmeBlock(readme, renderReleaseIndex(releases));
+    assert.ok(spliced.startsWith('# Releases\n\nintro\n\n'));
+    assert.ok(spliced.endsWith('\n\noutro\n'));
+    assert.ok(!spliced.includes('old'));
   });
 });

@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOURCE — the living program</title>
+<meta name="description" content="The sixteen-instruction program inside the SOURCE contract, rewritten by every trade and mirrored from Ethereum.">
+
+<!-- Social preview. The image is regenerated on every release, so a shared link always shows
+     the current program. -->
+<meta property="og:title" content="SOURCE — the living program">
+<meta property="og:description" content="Sixteen instructions, rewritten by every trade, sealed every thirty-two changes.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://raw.githubusercontent.com/source-protocol-v4/source/main/releases/program.svg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/source-protocol-v4/source/main/releases/program.svg">
+
+<style>
+  :root {
+    --bg: #fdf2f4;
+    --ink: #4a2530;
+    --muted: #a8707f;
+    --line: #f0d5db;
+    --card: #fffafb;
+    --op0: #f6dfe3;
+    --op1: #f3b3c0;
+    --op2: #ef8098;
+    --op3: #e8637a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1013;
+      --ink: #f7e6ea;
+      --muted: #c08e9b;
+      --line: #3a2229;
+      --card: #241519;
+      --op0: #3a2229;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  main { max-width: 62rem; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 2.5rem; }
+  h1 { font-size: clamp(1.7rem, 5vw, 2.6rem); margin: 0 0 .4rem; letter-spacing: .04em; }
+  .tagline { color: var(--muted); margin: 0; font-size: .95rem; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem 1.4rem;
+    margin: 1.4rem 0 0; padding: 0; list-style: none; font-size: .85rem; color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: .55rem; margin: 2.5rem 0 1rem;
+  }
+  @media (max-width: 40rem) { .grid { grid-template-columns: repeat(4, 1fr); } }
+  .slot {
+    aspect-ratio: 1; border-radius: 12px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: .2rem; position: relative;
+    transition: transform .35s ease, box-shadow .35s ease;
+  }
+  .slot .n {
+    position: absolute; top: .35rem; left: .45rem; font-size: .68rem; opacity: .65;
+  }
+  .slot .op { font-size: .72rem; font-weight: 600; letter-spacing: .02em; }
+  .op-0 { background: var(--op0); color: var(--muted); }
+  .op-1 { background: var(--op1); color: #fff; }
+  .op-2 { background: var(--op2); color: #fff; }
+  .op-3 { background: var(--op3); color: #fff; }
+  .slot.changed { transform: translateY(-4px); box-shadow: 0 0 0 3px var(--ink); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;
+    font-size: .78rem; color: var(--muted); margin-bottom: 3rem;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .swatch { width: .85rem; height: .85rem; border-radius: 4px; display: inline-block; }
+
+  h2 { font-size: 1rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+       border-bottom: 1px solid var(--line); padding-bottom: .5rem; margin: 3rem 0 1.2rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.prog { font-size: .95rem; letter-spacing: .12em; }
+  tbody tr:hover { background: var(--card); }
+  a { color: var(--op3); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .scroll { overflow-x: auto; }
+
+  footer { margin-top: 3.5rem; text-align: center; font-size: .78rem; color: var(--muted); }
+  .status { text-align: center; color: var(--muted); padding: 2rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SOURCE</h1>
+    <p class="tagline">the program rewrites itself — every buy pushes it forward, every sell rolls it back</p>
+    <ul class="meta" id="meta"></ul>
+  </header>
+
+  <div class="grid" id="grid" aria-label="the sixteen instruction slots"></div>
+
+  <div class="legend">
+    <span><i class="swatch op-0"></i>EMPTY</span>
+    <span><i class="swatch op-1"></i>PUSH</span>
+    <span><i class="swatch op-2"></i>SWAP</span>
+    <span><i class="swatch op-3"></i>LOOP</span>
+  </div>
+
+  <h2>Recent releases</h2>
+  <div class="scroll"><table id="history"><tbody></tbody></table></div>
+  <p class="status" id="status">loading…</p>
+
+  <footer>
+    Verified mirror of the SOURCE contract ·
+    <a href="https://github.com/source-protocol-v4/source">repository</a> ·
+    <a id="etherscan" href="https://etherscan.io">contract</a>
+    <br>Read-only. No private key, no transactions.
+  </footer>
+</main>
+
+<script>
+const RAW = 'https://raw.githubusercontent.com/source-protocol-v4/source/main/releases';
+const OPS = ['EMPTY', 'PUSH', 'SWAP', 'LOOP'];
+const GLYPH_OP = { '░': 0, '▒': 1, '▓': 2, '█': 3 };
+
+const $ = (id) => document.getElementById(id);
+
+/**
+ * Escape anything interpolated into markup.
+ *
+ * The data comes from this repository's own generated files, but treating it as untrusted costs
+ * nothing and means a malformed or tampered file can only ever render as visible text.
+ */
+const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+/** Draw the sixteen slots, marking any that differ from the previous release. */
+function drawProgram(program, previous) {
+  $('grid').innerHTML = program.slice(0, 16).map((name, slot) => {
+    // Only a known opcode selects a colour class; anything else falls back to EMPTY.
+    const op = OPS.indexOf(name);
+    const cls = op >= 0 ? op : 0;
+    const changed = previous && previous[slot] !== undefined && previous[slot] !== op;
+    return `<div class="slot op-${cls}${changed ? ' changed' : ''}" title="slot ${slot}: ${esc(name)}">
+      <span class="n">${String(slot).padStart(2, '0')}</span>
+      <span class="op">${esc(name)}</span>
+    </div>`;
+  }).join('');
+}
+
+function drawMeta(latest) {
+  $('meta').innerHTML = [
+    ['release', latest.name],
+    ['revision', latest.revision],
+    ['sealed', latest.totalReleases],
+    ['buys / sells', `${latest.buys} / ${latest.sells}`],
+    ['state', latest.packedState],
+  ].map(([k, v]) => `<li>${k} <b>${esc(v)}</b></li>`).join('');
+
+  // Only a well-formed address is ever put in the link.
+  if (/^0x[0-9a-fA-F]{40}$/.test(String(latest.contract ?? ''))) {
+    $('etherscan').href = `https://etherscan.io/address/${latest.contract}`;
+  }
+}
+
+/**
+ * Parse the rows out of HISTORY.md. The table is generated by the mirror with a fixed column
+ * order, so a positional read is safe here; anything unexpected is skipped rather than guessed at.
+ */
+function parseHistory(markdown) {
+  return markdown.split('\n')
+    .filter((line) => line.startsWith('| [v0.'))
+    .map((line) => {
+      const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean);
+      if (cells.length < 7) return null;
+      const id = /\[v0\.(\d+)\]/.exec(cells[0]);
+      if (!id) return null;
+      return {
+        id: Number(id[1]),
+        program: cells[1].replace(/`/g, ''),
+        revision: cells[2],
+        buys: cells[3],
+        sells: cells[4],
+        block: cells[5],
+      };
+    })
+    .filter(Boolean);
+}
+
+function drawHistory(rows) {
+  const newest = rows.slice(-25).reverse();
+  const body = newest.map((row) => `<tr>
+    <td><a href="https://github.com/source-protocol-v4/source/tree/main/releases/v0.${row.id}">v0.${row.id}</a></td>
+    <td class="prog">${esc(row.program)}</td>
+    <td>${esc(row.revision)}</td>
+    <td>${esc(row.buys)}/${esc(row.sells)}</td>
+    <td>${esc(row.block)}</td>
+  </tr>`).join('');
+
+  $('history').innerHTML = `<thead><tr>
+    <th>release</th><th>program</th><th>revision</th><th>buys/sells</th><th>block</th>
+  </tr></thead><tbody>${body}</tbody>`;
+}
+
+async function load() {
+  try {
+    const [latestRes, historyRes] = await Promise.all([
+      fetch(`${RAW}/latest.json`, { cache: 'no-store' }),
+      fetch(`${RAW}/HISTORY.md`, { cache: 'no-store' }),
+    ]);
+    if (!latestRes.ok) throw new Error(`latest.json: HTTP ${latestRes.status}`);
+
+    const latest = await latestRes.json();
+    drawMeta(latest);
+
+    let previous = null;
+    if (historyRes.ok) {
+      const rows = parseHistory(await historyRes.text());
+      drawHistory(rows);
+      // The row before the newest tells us which slots moved in the latest release.
+      const prior = rows[rows.length - 2];
+      if (prior) previous = [...prior.program].map((glyph) => GLYPH_OP[glyph]);
+    }
+
+    drawProgram(latest.program, previous);
+    $('status').textContent = '';
+  } catch (error) {
+    $('status').textContent = `could not load the mirror (${error.message})`;
+  }
+}
+
+load();
+// The mirror commits roughly every fifteen minutes; refresh on the same rhythm.
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>

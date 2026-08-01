@@ -20,6 +20,9 @@ them here as plain files anyone can read.
 
 ## The program right now
 
+Also viewable as a [live page](https://source-protocol-v4.github.io/source/), which highlights the
+slots that moved in the newest release.
+
 <!-- SOURCE:BEGIN -->
 
 ```
