@@ -25,16 +25,16 @@ them here as plain files anyone can read.
 ```
 ┌────────────────────────────────────────────┐
 │   0  1  2  3  4  5  6  7                   │
-│  █  ▒  ░  ▒  ░  ▓  ▒  █     THE PROGRAM    │
+│  █  ▒  ▓  █  ▒  ░  ▓  ▓     THE PROGRAM    │
 │                                            │
 │   8  9 10 11 12 13 14 15                   │
-│  ▒  ▓  ▓  ▓  █  ▓  █  ░                    │
+│  ▒  ▓  ▓  ▒  ▓  ▒  █  ░                    │
 └────────────────────────────────────────────┘
 ```
 
-**v0.46** · revision 1504 · 47 releases sealed · `0x3ba9d847`
+**v0.61** · revision 1984 · 63 releases sealed · `0x3669a1e7`
 
-<sub>00 LOOP · 01 PUSH · 02 EMPTY · 03 PUSH · 04 EMPTY · 05 SWAP · 06 PUSH · 07 LOOP · 08 PUSH · 09 SWAP · 10 SWAP · 11 SWAP · 12 LOOP · 13 SWAP · 14 LOOP · 15 EMPTY</sub>
+<sub>00 LOOP · 01 PUSH · 02 SWAP · 03 LOOP · 04 PUSH · 05 EMPTY · 06 SWAP · 07 SWAP · 08 PUSH · 09 SWAP · 10 SWAP · 11 PUSH · 12 SWAP · 13 PUSH · 14 LOOP · 15 EMPTY</sub>
 
 <!-- SOURCE:END -->
 
