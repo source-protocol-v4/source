@@ -25,10 +25,12 @@ These files sit alongside the release folders and are refreshed whenever a new r
 
 <!-- SOURCE:BEGIN -->
 
-**96 releases mirrored.** Newest first.
+**98 releases mirrored.** Newest first.
 
 | Release | Program | Revision | Buys/Sells | Block |
 | --- | --- | --- | --- | --- |
+| [v0.97](v0.97/) | `░▒▒█▒░░░██▓░░▓░░` | 3136 | 18/14 | 25667871 |
+| [v0.96](v0.96/) | `█░░██▒▓███▓░▓▓░▒` | 3104 | 19/13 | 25667317 |
 | [v0.95](v0.95/) | `█░█░█▒█▓░█▓░▒░░▒` | 3072 | 20/12 | 25666877 |
 | [v0.94](v0.94/) | `▓█▒▓░▓▓█░▓░▒░░▒█` | 3040 | 13/19 | 25666542 |
 | [v0.93](v0.93/) | `██▓░██░█▒▓▓▒▒▒▒▓` | 3008 | 28/4 | 25666288 |
@@ -47,10 +49,8 @@ These files sit alongside the release folders and are refreshed whenever a new r
 | [v0.80](v0.80/) | `▓█▒██▓▒█▓░▒▓▓▓▒▓` | 2592 | 12/20 | 25661806 |
 | [v0.79](v0.79/) | `███▒▓██▓█▒▓▒▓▒▓▓` | 2560 | 14/18 | 25661353 |
 | [v0.78](v0.78/) | `▒█▒▒▓▓██▒▒▓▒░░▓█` | 2528 | 19/13 | 25661103 |
-| [v0.77](v0.77/) | `▒░█░░░▒▒░█░█░▓▓░` | 2496 | 20/12 | 25660737 |
-| [v0.76](v0.76/) | `░▒██████▓██▓▒▒█▓` | 2464 | 23/9 | 25660474 |
 
-<sub>76 older releases not shown — see [HISTORY.md](HISTORY.md) for the full list.</sub>
+<sub>78 older releases not shown — see [HISTORY.md](HISTORY.md) for the full list.</sub>
 
 <!-- SOURCE:END -->
 
