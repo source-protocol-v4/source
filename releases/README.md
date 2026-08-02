@@ -25,10 +25,11 @@ These files sit alongside the release folders and are refreshed whenever a new r
 
 <!-- SOURCE:BEGIN -->
 
-**105 releases mirrored.** Newest first.
+**106 releases mirrored.** Newest first.
 
 | Release | Program | Revision | Buys/Sells | Block |
 | --- | --- | --- | --- | --- |
+| [v0.105](v0.105/) | `▒░██░█▒▒▓█░▒▒█░▓` | 3392 | 25/7 | 25669568 |
 | [v0.104](v0.104/) | `░░▓▓▓█▒█▓▒▓▒░█░░` | 3360 | 14/18 | 25669363 |
 | [v0.103](v0.103/) | `██▒░███░▒▒█░█▒░▒` | 3328 | 21/11 | 25668759 |
 | [v0.102](v0.102/) | `█▒░█▓▓█▒▒▒░▓▓░░█` | 3296 | 13/19 | 25668697 |
@@ -48,9 +49,8 @@ These files sit alongside the release folders and are refreshed whenever a new r
 | [v0.88](v0.88/) | `▓░▒░▓░█░▒▒░▓░▓▓░` | 2848 | 17/15 | 25664647 |
 | [v0.87](v0.87/) | `▓█▓▓▓▒▓█▓████░▓▒` | 2816 | 17/15 | 25664127 |
 | [v0.86](v0.86/) | `█░█░▓▒██▒▒█░█▒█▒` | 2784 | 17/15 | 25663294 |
-| [v0.85](v0.85/) | `█░▓█▓▓█▓█▒░░█▓░░` | 2752 | 18/14 | 25662947 |
 
-<sub>85 older releases not shown — see [HISTORY.md](HISTORY.md) for the full list.</sub>
+<sub>86 older releases not shown — see [HISTORY.md](HISTORY.md) for the full list.</sub>
 
 <!-- SOURCE:END -->
 
