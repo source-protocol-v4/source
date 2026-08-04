@@ -28,16 +28,16 @@ slots that moved in the newest release.
 ```
 ┌────────────────────────────────────────────┐
 │   0  1  2  3  4  5  6  7                   │
-│  ░  █  ░  ▓  █  █  ▓  █     THE PROGRAM    │
+│  █  ▒  ▒  █  ▒  ░  ░  █     THE PROGRAM    │
 │                                            │
 │   8  9 10 11 12 13 14 15                   │
-│  █  ▒  ▒  █  ▓  ▓  █  █                    │
+│  ░  ▒  ░  █  ▓  ▒  ▒  ░                    │
 └────────────────────────────────────────────┘
 ```
 
-**v0.123** · revision 3968 · 124 releases sealed · `0xfad7ef8c`
+**v0.124** · revision 4000 · 125 releases sealed · `0x16c4c1d7`
 
-<sub>00 EMPTY · 01 LOOP · 02 EMPTY · 03 SWAP · 04 LOOP · 05 LOOP · 06 SWAP · 07 LOOP · 08 LOOP · 09 PUSH · 10 PUSH · 11 LOOP · 12 SWAP · 13 SWAP · 14 LOOP · 15 LOOP</sub>
+<sub>00 LOOP · 01 PUSH · 02 PUSH · 03 LOOP · 04 PUSH · 05 EMPTY · 06 EMPTY · 07 LOOP · 08 EMPTY · 09 PUSH · 10 EMPTY · 11 LOOP · 12 SWAP · 13 PUSH · 14 PUSH · 15 EMPTY</sub>
 
 <!-- SOURCE:END -->
 
